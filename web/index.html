@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f5f0">
+<title>Phone Codex</title>
+<link rel="icon" href="/icon.svg">
+<link rel="stylesheet" href="/ui.css">
+<script src="/ui.js" defer></script>
+</head>
+<body>
+<section id="login" class="login" hidden>
+  <form id="login-form" class="login-card">
+    <div class="brand"><img src="/icon.svg" alt=""><strong>Phone Codex</strong></div>
+    <h1>连接你的电脑</h1>
+    <p>使用 Windows 账户密码登录</p>
+    <label for="password">Windows 密码</label>
+    <input id="password" type="password" autocomplete="current-password" required>
+    <button class="primary">连接电脑</button>
+    <p id="login-error" class="error" role="alert"></p>
+  </form>
+</section>
+<div id="app" class="layout" hidden>
+  <aside id="sidebar">
+    <div class="brand"><img src="/icon.svg" alt=""><strong>Phone Codex</strong><button id="close-sidebar" class="icon mobile" aria-label="关闭会话列表">×</button></div>
+    <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> 新建会话</button>
+    <button id="new-project"><span aria-hidden="true">＋</span> 新建项目</button>
+    <div class="side-label"><span>项目与会话</span><button id="archived" class="quiet" aria-pressed="false">归档</button></div>
+    <div id="project-status" class="project-path" role="status" hidden></div>
+    <button id="retry-projects" class="quiet" hidden>重新加载项目</button>
+    <nav id="threads" aria-label="项目与会话"></nav>
+    <button id="more" class="quiet" hidden>加载更多</button>
+    <button id="logout" class="logout">退出登录</button>
+  </aside>
+  <button id="scrim" aria-label="关闭侧栏" hidden></button>
+  <main>
+    <header>
+      <button id="open-sidebar" class="icon mobile" aria-label="打开会话列表" aria-expanded="false">☰</button>
+      <div id="title" class="title">新建会话</div>
+      <div class="tabs" aria-label="页面">
+        <button id="show-chat" aria-pressed="true">Codex</button>
+        <button id="show-files" aria-pressed="false">文件</button>
+      </div>
+    </header>
+    <div id="toast" role="status" hidden></div>
+    <section id="chat" class="chat" aria-label="Codex 会话">
+      <div id="scroll" class="transcript">
+        <div id="welcome" class="welcome">
+          <img src="/icon.svg" alt="">
+          <h1>今天想做什么？</h1>
+          <p id="chat-root"></p>
+        </div>
+        <div id="messages" class="messages"></div>
+        <div id="approvals" class="messages"></div>
+      </div>
+      <form id="composer">
+        <label class="sr-only" for="prompt">发给 Codex 的消息</label>
+        <textarea id="prompt" placeholder="给 Codex 发消息…" rows="1" maxlength="25000" required></textarea>
+        <div class="compose-footer"><select id="model" aria-label="模型"><option value="">默认模型</option></select><select id="effort" aria-label="推理深度" disabled><option value="">推理深度</option></select><select id="reviewer" aria-label="审批方式"><option value="user">手动审批</option><option value="auto_review">自动审查</option></select><span id="turn-status" role="status"></span><button id="stop" type="button" hidden>停止</button><button id="send" class="primary" aria-label="发送消息">↑</button></div>
+      </form>
+    </section>
+    <section id="files" class="files" aria-label="共享文件" hidden>
+      <div class="file-heading"><div><h1>共享文件</h1><p id="shared-root"></p></div>
+        <div class="file-actions"><button id="folder-chat">在此启动 Codex</button><button id="mkdir">新建文件夹</button><button id="pick-upload" class="primary">上传文件</button><input id="upload" type="file" multiple hidden></div>
+      </div>
+      <nav id="breadcrumbs" aria-label="当前文件夹"></nav>
+      <div id="project-picker" hidden><p>打开要用作项目的文件夹。也可以先新建一个文件夹。</p><button id="cancel-project">取消</button><button id="choose-project" class="primary">选择当前目录</button></div>
+      <div class="file-tools"><input id="filter" type="search" placeholder="搜索当前文件夹" aria-label="搜索当前文件夹"><button id="refresh-files">刷新</button></div>
+      <p id="upload-status" role="status" hidden></p>
+      <div id="entries"></div>
+    </section>
+  </main>
+</div>
+<dialog id="dialog">
+  <form id="dialog-form">
+    <h2 id="dialog-title"></h2>
+    <p id="dialog-note"></p>
+    <input id="dialog-name" aria-label="名称" maxlength="255">
+    <div class="dialog-actions"><button id="dialog-cancel" type="button">取消</button><button class="primary" id="dialog-confirm">确定</button></div>
+  </form>
+</dialog>
+</body>
+</html>

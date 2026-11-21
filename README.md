@@ -1,18 +1,25 @@
 # Phone Codex
 
-在手机浏览器里访问 Windows 上的 Codex，并在手机和电脑之间传文件。界面包含最近会话、对话区和共享文件页，适配手机竖屏和桌面。
+通过局域网，在手机浏览器里使用 Windows 电脑上的 Codex，并在手机和电脑之间传文件。服务可以绑定手机热点或同一 Wi-Fi 上的电脑地址，通过 HTTPS 提供访问，使用 Windows 账户密码登录。
+
+## 功能
+
+- 在手机上选择文件夹并新建项目，在项目内新建或继续会话。回复实时显示，命令和文件变更记录可展开查看。
+- 选择 Codex 模型及该模型支持的推理深度。审批可选手机手动处理或 Codex 自动审查。
+- 浏览、搜索和管理文件，上传或下载文件。手机浏览器支持系统分享时，可从分享面板转发给微信。
+- 可选桌面项目自动登记。保持 Phone Codex 运行，完全退出桌面 Codex 后，服务会登记手机新建的项目和未归组的会话。下次打开桌面 Codex 时查看。
 
 ## 在 Windows 上启动
 
 1. 用运行 Codex 的 Windows 账户打开 PowerShell。确认 Python 3.12 或更新版可用，且 `codex app-server --help` 能运行。使用默认临时 HTTPS 证书还需要 OpenSSL，Git for Windows 通常自带。
 2. 将 Windows 连接到手机热点。运行 `ipconfig`，找到连接热点的 Wi-Fi 网卡对应的 IPv4 地址。
-3. 在本项目目录运行以下命令，把 IP 换成电脑的热点 IPv4。全盘模式会列出当前账户可见的盘符，并使用当前账户的 Windows 文件权限。
+3. 在本项目目录运行以下命令，把 IP 换成电脑的热点 IPv4，把 `D:\code` 换成要共享的文件夹。文件操作使用当前账户的 Windows 文件权限。
 
    ```cmd
-   python .\server.py --ip 192.168.43.100 --all-drives
+   python .\server.py --ip 192.168.43.100 --root "D:\code"
    ```
 
-   只开放指定文件夹时，改用 `--root "D:\code"`。
+   需要浏览多个盘符时，把 `--root "D:\code"` 换成 `--all-drives`。
 
    启动时加 `--sync-desktop-projects`，可在桌面 Codex 完全退出后自动登记手机新建的项目。请保持 Phone Codex 服务运行，退出桌面后等几秒再打开。旧项目可用 `--sync-existing-project "D:\code\项目目录"` 指定，此参数可重复。此功能会先备份桌面索引，再登记项目和未归组的会话。
 

@@ -37,17 +37,53 @@ def verify_password(account, password):
         domain, username = account.split("\\", 1)
     elif "@" in account:
         domain = None
-    logon = ctypes.WinDLL("advapi32", use_last_error=True).LogonUserW
+    security = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    logon = security.LogonUserW
     logon.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR,
                       wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE))
     logon.restype = wintypes.BOOL
     token = wintypes.HANDLE()
-    success = logon(username, domain, password, 2, 0, ctypes.byref(token))
-    if success:
-        close = ctypes.WinDLL("kernel32").CloseHandle
-        close.argtypes = (wintypes.HANDLE,)
+    if not logon(username, domain, password, 2, 0, ctypes.byref(token)):
+        return False
+    close = kernel.CloseHandle
+    close.argtypes = (wintypes.HANDLE,)
+    current_process = kernel.GetCurrentProcess
+    current_process.restype = wintypes.HANDLE
+    open_token = security.OpenProcessToken
+    open_token.argtypes = (wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE))
+    open_token.restype = wintypes.BOOL
+    process_token = wintypes.HANDLE()
+    try:
+        if not open_token(current_process(), 0x0008, ctypes.byref(process_token)):  # TOKEN_QUERY
+            return False
+        return same_token_user(security, token, process_token)
+    finally:
+        if process_token:
+            close(process_token)
         close(token)
-    return bool(success)
+
+
+def same_token_user(security, first, second):
+    info = security.GetTokenInformation
+    info.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                     wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+    info.restype = wintypes.BOOL
+    buffers = []
+    for token in (first, second):
+        size = wintypes.DWORD()
+        info(token, 1, None, 0, ctypes.byref(size))  # TokenUser
+        if not size.value:
+            return False
+        buffer = ctypes.create_string_buffer(size.value)
+        if not info(token, 1, buffer, size.value, ctypes.byref(size)):
+            return False
+        buffers.append(buffer)
+    # TOKEN_USER begins with SID_AND_ATTRIBUTES, whose first member is a SID pointer.
+    equal = security.EqualSid
+    equal.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    equal.restype = wintypes.BOOL
+    return bool(equal(*(ctypes.c_void_p.from_buffer(buffer) for buffer in buffers)))
 
 
 def filename(name):
@@ -88,15 +124,19 @@ class Files:
         current = base
         for part in parts:
             current /= filename(part)
-            if current.exists() or current.is_symlink():
+            try:
                 info = current.lstat()
-                if getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT or current.is_symlink():
-                    raise ValueError("无法访问链接或重解析点")
-                current = current.resolve(strict=True)
-                if not current.is_relative_to(base) or any(
-                    part.casefold() == TRASH_NAME for part in current.relative_to(base).parts
-                ):
-                    raise ValueError("无法访问此路径")
+            except FileNotFoundError:
+                continue
+            if getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT or stat.S_ISLNK(info.st_mode):
+                raise ValueError("无法访问链接或重解析点")
+            if self.root is not None and stat.S_ISREG(info.st_mode) and info.st_nlink > 1:
+                raise ValueError("限定目录模式下无法访问硬链接文件")
+            current = current.resolve(strict=True)
+            if not current.is_relative_to(base) or any(
+                part.casefold() == TRASH_NAME for part in current.relative_to(base).parts
+            ):
+                raise ValueError("无法访问此路径")
         return current
 
     def trash(self, directory):
@@ -175,6 +215,7 @@ class BridgeServer(ThreadingHTTPServer):
         self.lan = lan
         self.account = account
         self.sessions = {}
+        self.connections = threading.BoundedSemaphore(32)
         self.attempts = deque()
         self.auth_lock = threading.Lock()
         self.codex_lock = threading.Lock()
@@ -195,15 +236,25 @@ class BridgeServer(ThreadingHTTPServer):
         return connection, address
 
     def process_request_thread(self, request, client_address):
-        if ipaddress.IPv4Address(client_address[0]) not in self.lan:
-            request.close()
+        try:
+            try:
+                request = self.tls.wrap_socket(request, server_side=True)
+            except OSError:
+                request.close()
+                return
+            super().process_request_thread(request, client_address)
+        finally:
+            self.connections.release()
+
+    def process_request(self, request, client_address):
+        if ipaddress.IPv4Address(client_address[0]) not in self.lan or not self.connections.acquire(blocking=False):
+            self.shutdown_request(request)
             return
         try:
-            request = self.tls.wrap_socket(request, server_side=True)
-        except OSError:
-            request.close()
-            return
-        super().process_request_thread(request, client_address)
+            super().process_request(request, client_address)
+        except Exception:
+            self.connections.release()
+            raise
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -313,10 +364,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise FileNotFoundError
             source = target.open("rb")
         with source:
+            info = os.fstat(source.fileno())
+            if files.root is not None and info.st_nlink > 1:
+                raise ValueError("限定目录模式下无法访问硬链接文件")
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(target.name, safe=""))
-            self.send_header("Content-Length", str(os.fstat(source.fileno()).st_size))
+            self.send_header("Content-Length", str(info.st_size))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
